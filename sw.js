@@ -11,7 +11,20 @@ const ASSETS = [
 self.addEventListener('install', event => {
   console.log('[sw] install')
   event.waitUntil(
-    caches.open(CACHE).then(cache => cache.addAll(ASSETS))
+    caches.open(CACHE).then(async cache => {
+      try {
+        await cache.addAll(ASSETS)
+      } catch (err) {
+        // If addAll fails (one asset 404s), ensure at least index.html is cached
+        console.warn('[sw] cache.addAll failed:', err)
+        try {
+          const resp = await fetch('/index.html')
+          if (resp && resp.ok) await cache.put('/index.html', resp.clone())
+        } catch (e) {
+          console.warn('[sw] could not cache index.html during install:', e)
+        }
+      }
+    })
   );
 });
 
@@ -43,7 +56,13 @@ self.addEventListener('fetch', event => {
           });
           return networkResponse;
         })
-        .catch(() => caches.match('/index.html'))
+            .catch(async () => {
+              const cached = await caches.match('/index.html')
+              if (cached) return cached
+              return new Response(`<!doctype html><meta charset="utf-8"><title>Offline</title><h1>Offline</h1><p>Du er frakoblet.</p>`, {
+                headers: { 'Content-Type': 'text/html' }
+              })
+            })
     );
     return;
   }
