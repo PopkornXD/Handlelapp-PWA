@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Handlelapp</title>
+    <meta name="theme-color" content="#2563eb">
+    <link rel="manifest" href="manifest.json">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <main class="app" aria-labelledby="title">
+        <h1 id="title">Handlelapp</h1>
+
+        <form id="addForm" aria-label="Legg til vare">
+            <input id="itemInput" type="text" placeholder="Skriv inn vare og trykk Enter eller Legg til" autocomplete="off" />
+            <button id="addBtn" type="submit">Legg til</button>
+        </form>
+
+        <ul id="list" aria-live="polite"></ul>
+
+        <div class="controls">
+            <div class="count" id="count">0 varer</div>
+            <div>
+                <button id="clearBtn" class="secondary" title="Fjern alle varer">Fjern alle</button>
+            </div>
+        </div>
+    </main>
+
+    <script src="app.js" defer></script>
+</body>
+</html>
