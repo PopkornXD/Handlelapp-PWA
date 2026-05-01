@@ -15,7 +15,6 @@ self.addEventListener('install', event => {
       try {
         await cache.addAll(ASSETS)
       } catch (err) {
-        // If addAll fails (one asset 404s), ensure at least index.html is cached
         console.warn('[sw] cache.addAll failed:', err)
         try {
           const resp = await fetch('/index.html')
@@ -46,24 +45,33 @@ self.addEventListener('fetch', event => {
 
   if (req.mode === 'navigate' || (req.method === 'GET' && req.headers.get('accept')?.includes('text/html'))) {
     console.log('[sw] navigation request', req.url)
-    event.respondWith(
-      fetch(req)
-        .then(networkResponse => {
-          caches.open(CACHE).then(cache => {
-            try {
-              cache.put('/index.html', networkResponse.clone());
-            } catch (e) { }
-          });
-          return networkResponse;
-        })
-            .catch(async () => {
-              const cached = await caches.match('/index.html')
-              if (cached) return cached
-              return new Response(`<!doctype html><meta charset="utf-8"><title>Offline</title><h1>Offline</h1><p>Du er frakoblet.</p>`, {
-                headers: { 'Content-Type': 'text/html' }
-              })
+    event.respondWith((async () => {
+      const cached = await caches.match('/index.html')
+      if (cached) {
+        fetch(req).then(networkResponse => {
+          if (networkResponse && networkResponse.ok) {
+            caches.open(CACHE).then(cache => {
+              try { cache.put('/index.html', networkResponse.clone()) } catch (e) {}
             })
-    );
+          }
+        }).catch(() => {})
+        return cached
+      }
+
+      try {
+        const networkResponse = await fetch(req)
+        caches.open(CACHE).then(cache => {
+          try { cache.put('/index.html', networkResponse.clone()) } catch (e) {}
+        })
+        return networkResponse
+      } catch (err) {
+        const fallback = await caches.match('/index.html')
+        if (fallback) return fallback
+        return new Response(`<!doctype html><meta charset="utf-8"><title>Offline</title><h1>Offline</h1><p>Du er frakoblet.</p>`, {
+          headers: { 'Content-Type': 'text/html' }
+        })
+      }
+    })())
     return;
   }
 
