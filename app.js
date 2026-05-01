@@ -12,8 +12,10 @@ function saveItems() {
   try {
     const data = JSON.stringify(items)
     localStorage.setItem(STORAGE_KEY, data)
+  try { document.getElementById('downloadStatus').textContent = '' } catch (e) {}
   } catch (err) {
-    console.warn('Kunne ikke lagre til localStorage:', err)
+  console.warn('Kunne ikke lagre til localStorage:', err)
+  try { document.getElementById('downloadStatus').textContent = 'Feil ved lagring: ' + (err && err.message || err) } catch (e) {}
   }
 }
 
@@ -26,8 +28,11 @@ function loadItems() {
     }
     items = JSON.parse(raw)
     if (!Array.isArray(items)) items = []
+  try { document.getElementById('downloadStatus').textContent = '' } catch (e) {}
   } catch (err) {
-    items = []
+  items = []
+  console.warn('Kunne ikke lese fra localStorage:', err)
+  try { document.getElementById('downloadStatus').textContent = 'Feil ved lasting: ' + (err && err.message || err) } catch (e) {}
   }
 }
 
@@ -133,3 +138,32 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js')
   })
 }
+
+let deferredPrompt;
+const installBtn = document.getElementById('installBtn');
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  if (installBtn) installBtn.style.display = 'inline-block';
+});
+
+if (installBtn) {
+  installBtn.addEventListener('click', async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const choiceResult = await deferredPrompt.userChoice;
+    if (choiceResult.outcome === 'accepted') {
+      console.log('User accepted the install prompt');
+      installBtn.style.display = 'none';
+    } else {
+      console.log('User dismissed the install prompt');
+      installBtn.style.display = 'inline-block';
+    }
+    deferredPrompt = null;
+  });
+}
+
+window.addEventListener('appinstalled', () => {
+  console.log('App installed');
+});
