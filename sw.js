@@ -1,3 +1,8 @@
+// Minimal service worker for Handlelapp-PWA
+// - Cache the app shell at install
+// - Remove old caches at activate
+// - Serve cached responses first (cache-first) for predictable offline behavior
+
 const CACHE = 'handlelapp-v1';
 const ASSETS = [
   '/',
@@ -8,75 +13,36 @@ const ASSETS = [
   '/images/check-list-shopping-icon.png'
 ];
 
+// Install: cache essential files. If addAll fails the install will fail and
+// the SW won't activate — this keeps behavior simple and predictable.
 self.addEventListener('install', event => {
-  console.log('[sw] install')
   event.waitUntil(
-    caches.open(CACHE).then(async cache => {
-      try {
-        await cache.addAll(ASSETS)
-      } catch (err) {
-        console.warn('[sw] cache.addAll failed:', err)
-        try {
-          const resp = await fetch('/index.html')
-          if (resp && resp.ok) await cache.put('/index.html', resp.clone())
-        } catch (e) {
-          console.warn('[sw] could not cache index.html during install:', e)
-        }
-      }
-    })
+    caches.open(CACHE).then(cache => cache.addAll(ASSETS))
   );
 });
 
+// Activate: remove any old caches and take control of pages immediately.
 self.addEventListener('activate', event => {
-  console.log('[sw] activate')
   event.waitUntil(
     caches.keys().then(keys => Promise.all(
       keys.map(key => key === CACHE ? null : caches.delete(key))
     ))
   );
-
   if (self.clients && typeof self.clients.claim === 'function') {
     event.waitUntil(self.clients.claim());
   }
 });
 
+// Fetch: cache-first for navigations and assets. If not in cache, fall back to network.
 self.addEventListener('fetch', event => {
   const req = event.request;
 
   if (req.mode === 'navigate' || (req.method === 'GET' && req.headers.get('accept')?.includes('text/html'))) {
-    console.log('[sw] navigation request', req.url)
-    event.respondWith((async () => {
-      const cached = await caches.match('/index.html')
-      if (cached) {
-        fetch(req).then(networkResponse => {
-          if (networkResponse && networkResponse.ok) {
-            caches.open(CACHE).then(cache => {
-              try { cache.put('/index.html', networkResponse.clone()) } catch (e) {}
-            })
-          }
-        }).catch(() => {})
-        return cached
-      }
-
-      try {
-        const networkResponse = await fetch(req)
-        caches.open(CACHE).then(cache => {
-          try { cache.put('/index.html', networkResponse.clone()) } catch (e) {}
-        })
-        return networkResponse
-      } catch (err) {
-        const fallback = await caches.match('/index.html')
-        if (fallback) return fallback
-        return new Response(`<!doctype html><meta charset="utf-8"><title>Offline</title><h1>Offline</h1><p>Du er frakoblet.</p>`, {
-          headers: { 'Content-Type': 'text/html' }
-        })
-      }
-    })())
+    // Navigation requests: serve cached index.html if available, else network.
+    event.respondWith(caches.match('/index.html').then(cached => cached || fetch(req)));
     return;
   }
 
-  console.log('[sw] fetch', req.url)
-  event.respondWith(
-    caches.match(req).then(resp => resp || fetch(req))
-  );
+  // For other requests (assets), try cache first, then network.
+  event.respondWith(caches.match(req).then(resp => resp || fetch(req)));
 });
