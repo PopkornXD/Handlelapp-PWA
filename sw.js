@@ -28,24 +28,38 @@ async function cacheAssetsSafe(cache, assets) {
 }
 
 self.addEventListener('install', event => {
+  console.log('[sw] install start')
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE)
     try {
       // try bulk addAll first (faster), fall back to safe per-resource caching on failure
       await cache.addAll(ASSETS)
+      console.log('[sw] cache.addAll succeeded')
     } catch (err) {
-      await cacheAssetsSafe(cache, ASSETS)
+      console.warn('[sw] cache.addAll failed, falling back to safe caching', err)
+      try {
+        await cacheAssetsSafe(cache, ASSETS)
+        console.log('[sw] cacheAssetsSafe completed')
+      } catch (e) {
+        console.error('[sw] cacheAssetsSafe error', e)
+      }
     }
   })())
   // activate immediately after install (optional: remove if you want waiting)
-  self.skipWaiting()
+  try { self.skipWaiting(); console.log('[sw] skipWaiting called') } catch (e) {}
 })
 
 self.addEventListener('activate', event => {
+  console.log('[sw] activate start')
   event.waitUntil((async () => {
-    const keys = await caches.keys()
-    await Promise.all(keys.map(k => k === CACHE ? null : caches.delete(k)))
-    if (self.clients && typeof self.clients.claim === 'function') await self.clients.claim()
+    try {
+      const keys = await caches.keys()
+      await Promise.all(keys.map(k => k === CACHE ? null : caches.delete(k)))
+      if (self.clients && typeof self.clients.claim === 'function') await self.clients.claim()
+      console.log('[sw] activate completed')
+    } catch (e) {
+      console.error('[sw] activate error', e)
+    }
   })())
 })
 
@@ -65,13 +79,20 @@ self.addEventListener('fetch', event => {
   if (req.mode === 'navigate' || (req.headers.get('accept') || '').includes('text/html')) {
     event.respondWith((async () => {
       const cache = await caches.open(CACHE)
-      const cached = await cache.match('/index.html')
-      if (cached) return cached
       try {
+        const cached = await cache.match('/index.html')
+        if (cached) {
+          // serve cached shell
+          return cached
+        }
+        // else try network
         const net = await fetch(req)
-        if (net && net.ok) await cache.put('/index.html', net.clone())
+        if (net && net.ok) {
+          try { await cache.put('/index.html', net.clone()) } catch (e) { console.warn('[sw] put index.html failed', e) }
+        }
         return net
       } catch (e) {
+        console.warn('[sw] fetch navigation failed, serving offline fallback', e)
         const fallback = await cache.match('/offline.html')
         return fallback || new Response('Offline', {status: 503, headers: {'Content-Type': 'text/plain'}})
       }
@@ -79,6 +100,16 @@ self.addEventListener('fetch', event => {
     return
   }
 
-  // Other assets: cache-first
-  event.respondWith(caches.match(req).then(resp => resp || fetch(req)))
+  // Other assets: cache-first with logging
+  event.respondWith((async () => {
+    try {
+      const cached = await caches.match(req)
+      if (cached) return cached
+      const net = await fetch(req)
+      return net
+    } catch (e) {
+      console.warn('[sw] fetch failed for', req.url, e)
+      throw e
+    }
+  })())
 })
