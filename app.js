@@ -131,7 +131,40 @@ render()
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', function () {
-    navigator.serviceWorker.register('/sw.js')
+    navigator.serviceWorker.register('/sw.js').then(reg => {
+      // If there's an updated worker waiting, notify the user
+      if (reg.waiting) {
+        showUpdateToast(reg)
+      }
+
+      reg.addEventListener('updatefound', () => {
+        const newWorker = reg.installing
+        newWorker.addEventListener('statechange', () => {
+          if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+            showUpdateToast(reg)
+          }
+        })
+      })
+    })
   })
+}
+
+function showUpdateToast(registration) {
+  const toast = document.getElementById('updateToast')
+  const reloadBtn = document.getElementById('reloadBtn')
+  if (!toast || !reloadBtn) return
+  toast.style.display = 'flex'
+
+  reloadBtn.onclick = () => {
+    // send message to SW to skipWaiting, then reload when activated
+    if (registration.waiting) {
+      registration.waiting.postMessage('skipWaiting')
+      registration.waiting.addEventListener('statechange', e => {
+        if (e.target.state === 'activated') {
+          window.location.reload()
+        }
+      })
+    }
+  }
 }
  
